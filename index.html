@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="GestureX — Control music, planets, games and micro-simulations with your hands and face using AI." />
+  <title>GestureX — AI Hand &amp; Face Controlled Platform</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" />
+  <link rel="stylesheet" href="css/main.css" />
+  <!-- MediaPipe AI Libraries -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+</head>
+<body>
+
+<!-- LOADING SCREEN -->
+<div id="loading-overlay">
+  <div class="loader-ring"></div>
+  <div style="font-family:var(--font-display);font-size:1.5rem;font-weight:900;letter-spacing:0.2em;background:linear-gradient(135deg,#00f5ff,#bf00ff);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:12px;">GESTURE X</div>
+  <div class="loader-text">INITIALIZING AI SYSTEMS...</div>
+</div>
+
+<!-- CAMERA PERMISSION MODAL -->
+<div id="permission-modal">
+  <div class="permission-box">
+    <div class="permission-icon">🖐️</div>
+    <h2 style="margin-bottom:12px;">Enable Gesture Control</h2>
+    <p style="color:var(--text-dim);font-size:0.9rem;margin-bottom:8px;line-height:1.7;">GestureX uses your webcam to detect hand movements and facial expressions. Your video stays <strong>100% local</strong> — nothing is uploaded or stored.</p>
+    <p style="color:var(--text-dim);font-size:0.85rem;margin-bottom:28px;">MediaPipe AI runs entirely in your browser.</p>
+    <div style="display:flex;flex-direction:column;gap:12px;">
+      <button class="btn btn-primary" id="grant-camera-btn">📷 Allow Camera Access</button>
+      <button class="btn btn-ghost" id="skip-camera-btn" style="font-size:0.7rem;">Continue Without Camera</button>
+    </div>
+    <div class="permission-status status-waiting" id="cam-status">⏳ Awaiting permission</div>
+  </div>
+</div>
+
+<!-- CALIBRATION SCREEN -->
+<div id="calibration-screen">
+  <div style="max-width:480px;text-align:center;padding:40px;">
+    <div style="font-family:var(--font-display);font-size:0.7rem;letter-spacing:0.2em;color:var(--neon-cyan);margin-bottom:16px;">GESTURE CALIBRATION</div>
+    <h2 style="margin-bottom:12px;">Show these gestures</h2>
+    <p style="color:var(--text-dim);margin-bottom:8px;">Perform each gesture in front of the camera to calibrate the system</p>
+    <div style="display:flex;justify-content:center;gap:20px;margin:32px 0;flex-wrap:wrap;">
+      <div class="glass-card" style="padding:20px;text-align:center;min-width:80px;"><div style="font-size:2.5rem;">✋</div><div style="font-size:0.7rem;color:var(--text-dim);margin-top:8px;">Open Palm</div></div>
+      <div class="glass-card" style="padding:20px;text-align:center;min-width:80px;"><div style="font-size:2.5rem;">✊</div><div style="font-size:0.7rem;color:var(--text-dim);margin-top:8px;">Fist</div></div>
+      <div class="glass-card" style="padding:20px;text-align:center;min-width:80px;"><div style="font-size:2.5rem;">🤏</div><div style="font-size:0.7rem;color:var(--text-dim);margin-top:8px;">Pinch</div></div>
+      <div class="glass-card" style="padding:20px;text-align:center;min-width:80px;"><div style="font-size:2.5rem;">✌️</div><div style="font-size:0.7rem;color:var(--text-dim);margin-top:8px;">Peace</div></div>
+    </div>
+    <div class="calibration-progress"><div class="calibration-fill" style="width:0%"></div></div>
+    <p style="font-family:var(--font-code);font-size:0.7rem;color:var(--text-dim);margin-top:12px;">Progress auto-detected via camera</p>
+    <button class="btn btn-ghost" style="margin-top:20px;font-size:0.7rem;" onclick="document.getElementById('calibration-screen').classList.remove('active')">Skip Calibration</button>
+  </div>
+</div>
+
+<!-- FLOATING NAVIGATION BAR -->
+<nav id="navbar">
+  <span class="nav-logo">✦ GESTUREX</span>
+  <div class="nav-divider"></div>
+  <button class="nav-btn active" data-page="home">Home</button>
+  <button class="nav-btn" data-page="music">🎵 Music</button>
+  <button class="nav-btn" data-page="planets">🌍 Planets</button>
+  <button class="nav-btn" data-page="games">🎮 Games</button>
+  <button class="nav-btn" data-page="micro">🔬 Micro</button>
+  <div class="nav-divider"></div>
+  <span id="fps-badge">-- FPS</span>
+  <button class="btn btn-ghost" id="calibrate-btn" style="padding:5px 12px;font-size:0.65rem;margin-left:4px;">⚙ Calibrate</button>
+  <button id="fullscreen-btn" style="background:none;border:none;cursor:pointer;font-size:1rem;color:var(--text-dim);padding:4px 8px;" title="Fullscreen">⛶</button>
+</nav>
+
+<!-- GESTURE TOAST -->
+<div id="gesture-toast"></div>
+
+<!-- GESTURE HINT PANEL -->
+<div id="gesture-hint" class="glass"></div>
+
+<!-- CAMERA PREVIEW -->
+<div id="camera-container" style="display:none;" title="Click to expand">
+  <video id="webcam" autoplay muted playsinline></video>
+  <canvas id="landmark-canvas"></canvas>
+  <div class="cam-label">● LIVE</div>
+</div>
+
+<!-- MAIN APP -->
+<main id="app">
+
+  <!-- HOME PAGE -->
+  <section id="page-home" class="page active">
+    <div class="home-hero">
+      <div class="hero-badge"><span>●</span> AI-Powered · MediaPipe · WebRTC · Web Audio API</div>
+      <h1 class="hero-title">Control Everything<br>With Your Hands</h1>
+      <p class="hero-sub">A futuristic gesture-controlled platform. Move your hands in front of the webcam to play music, explore planets, play games, and control micro-worlds — all using AI running locally in your browser.</p>
+      <div class="hero-cards">
+        <div class="glass-card hero-feature" data-page="music">
+          <div class="hero-feature-icon">🎵</div>
+          <div class="hero-feature-name">Gesture Music Player</div>
+          <div class="hero-feature-desc">Open palm to play, fist to pause, swipe to change tracks. Face detection auto-plays when you appear.</div>
+        </div>
+        <div class="glass-card hero-feature" data-page="planets">
+          <div class="hero-feature-icon">🌍</div>
+          <div class="hero-feature-name">Solar System Simulator</div>
+          <div class="hero-feature-desc">Pinch to zoom, rotate the solar system with your hand, point to select planets and learn their facts.</div>
+        </div>
+        <div class="glass-card hero-feature" data-page="games">
+          <div class="hero-feature-icon">🎮</div>
+          <div class="hero-feature-name">Gesture Catch Game</div>
+          <div class="hero-feature-desc">Move your hand left and right to control the paddle. Catch stars and gems, dodge bombs!</div>
+        </div>
+        <div class="glass-card hero-feature" data-page="micro">
+          <div class="hero-feature-icon">🔬</div>
+          <div class="hero-feature-name">Micro World Lab</div>
+          <div class="hero-feature-desc">Pinch to grab atoms, cells, and charged particles. Explore nano-scale physics simulations.</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;">
+        <button class="btn btn-primary" onclick="document.getElementById('permission-modal').style.display='flex'">📷 Enable Gesture Control</button>
+        <button class="btn btn-ghost" onclick="window.appRouter.navigate('music')">Explore Without Camera →</button>
+      </div>
+      <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:32px;">
+        <span style="font-family:var(--font-code);font-size:0.7rem;color:var(--text-dim);background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);padding:4px 12px;border-radius:50px;">MediaPipe Hands — 21 landmarks</span>
+        <span style="font-family:var(--font-code);font-size:0.7rem;color:var(--text-dim);background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);padding:4px 12px;border-radius:50px;">FaceMesh — 468 points</span>
+        <span style="font-family:var(--font-code);font-size:0.7rem;color:var(--text-dim);background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);padding:4px 12px;border-radius:50px;">WebRTC Camera API</span>
+        <span style="font-family:var(--font-code);font-size:0.7rem;color:var(--text-dim);background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);padding:4px 12px;border-radius:50px;">Web Audio API</span>
+        <span style="font-family:var(--font-code);font-size:0.7rem;color:var(--text-dim);background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);padding:4px 12px;border-radius:50px;">Canvas 2D + Particle Engine</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- PAGE 1: MUSIC PLAYER -->
+  <section id="page-music" class="page">
+    <div class="music-layout">
+      <div class="glass now-playing-card">
+        <div style="font-family:var(--font-display);font-size:0.65rem;letter-spacing:0.2em;color:var(--neon-violet);margin-bottom:24px;">NOW PLAYING</div>
+        <div class="album-art-wrapper">
+          <div class="album-art" id="album-art-display">🌆</div>
+          <div class="vinyl-hole"></div>
+        </div>
+        <div class="track-title">Neon Dreams</div>
+        <div class="track-artist">GestureX Synth</div>
+        <div class="equalizer"></div>
+        <div class="progress-container">
+          <div class="progress-bar"><div class="progress-fill"></div></div>
+          <div class="progress-times"><span class="time-current">0:00</span><span class="time-total">3:30</span></div>
+        </div>
+        <div class="controls">
+          <button class="ctrl-btn" id="prev-btn" title="Previous (Swipe Left)">⏮</button>
+          <button class="ctrl-btn" title="Shuffle">🔀</button>
+          <button class="ctrl-btn play" id="play-btn" title="Play/Pause (Open Palm / Fist)">▶</button>
+          <button class="ctrl-btn" title="Repeat">🔁</button>
+          <button class="ctrl-btn" id="next-btn" title="Next (Swipe Right)">⏭</button>
+        </div>
+        <div class="volume-control">
+          <span class="vol-icon" id="vol-icon">🔊</span>
+          <input type="range" class="vol-slider" id="vol-slider" min="0" max="100" value="70" />
+          <button class="ctrl-btn" id="mute-btn" style="width:36px;height:36px;font-size:0.8rem;">🔇</button>
+        </div>
+        <button class="btn btn-ghost" id="auto-play-toggle" style="width:100%;font-size:0.7rem;margin-bottom:12px;">👁️ Face Auto-Play: OFF</button>
+        <div class="gesture-guide">
+          <div class="gesture-guide-title">✦ GESTURE CONTROLS</div>
+          <div class="gesture-row"><span class="gesture-emoji">✋</span><span class="gesture-action">Open Palm</span>= Play</div>
+          <div class="gesture-row"><span class="gesture-emoji">✊</span><span class="gesture-action">Fist</span>= Pause</div>
+          <div class="gesture-row"><span class="gesture-emoji">👉</span><span class="gesture-action">Swipe Right</span>= Next Track</div>
+          <div class="gesture-row"><span class="gesture-emoji">👈</span><span class="gesture-action">Swipe Left</span>= Previous</div>
+          <div class="gesture-row"><span class="gesture-emoji">☝️</span><span class="gesture-action">Hand Up/Down</span>= Volume</div>
+          <div class="gesture-row"><span class="gesture-emoji">👍</span><span class="gesture-action">Thumbs Up</span>= Volume +</div>
+          <div class="gesture-row"><span class="gesture-emoji">😮</span><span class="gesture-action">Mouth Open</span>= [face gesture]</div>
+        </div>
+      </div>
+      <div class="glass playlist-card">
+        <div class="playlist-header"><span>PLAYLIST</span><span style="color:var(--text-dim);">6 tracks</span></div>
+        <div id="playlist-items"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- PAGE 2: SOLAR SYSTEM -->
+  <section id="page-planets" class="page" style="position:relative;height:100vh;">
+    <canvas id="planet-canvas"></canvas>
+    <div class="planet-ui">
+      <div class="glass-card" style="padding:16px;min-width:160px;">
+        <div style="font-family:var(--font-display);font-size:0.65rem;letter-spacing:0.15em;color:var(--neon-cyan);margin-bottom:12px;">SIMULATION MODE</div>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          <button class="mode-btn active" data-mode="learning" onclick="window.solarSystem?.setMode('learning')">📚 Learning</button>
+          <button class="mode-btn" data-mode="physics" onclick="window.solarSystem?.setMode('physics')">⚗️ Physics</button>
+          <button class="mode-btn" data-mode="fun" onclick="window.solarSystem?.setMode('fun')">🎉 Fun Mode</button>
+        </div>
+      </div>
+      <div class="glass-card" style="padding:16px;min-width:160px;">
+        <div style="font-family:var(--font-display);font-size:0.65rem;letter-spacing:0.15em;color:var(--neon-cyan);margin-bottom:8px;">SPEED</div>
+        <input type="range" min="0.1" max="10" step="0.1" value="1" style="width:100%;accent-color:var(--neon-cyan);" oninput="if(window.solarSystem)window.solarSystem.speed=parseFloat(this.value)" />
+        <div style="font-family:var(--font-code);font-size:0.7rem;color:var(--text-dim);margin-top:6px;">Hand height = speed</div>
+      </div>
+      <div class="glass-card" style="padding:12px 16px;">
+        <div style="font-family:var(--font-display);font-size:0.65rem;letter-spacing:0.15em;color:var(--neon-cyan);margin-bottom:8px;">GESTURES</div>
+        <div class="gesture-row" style="font-size:0.75rem;"><span>🤏</span><span style="color:var(--text-dim);"> Pinch = Zoom</span></div>
+        <div class="gesture-row" style="font-size:0.75rem;"><span>✋</span><span style="color:var(--text-dim);"> Open = Reset</span></div>
+        <div class="gesture-row" style="font-size:0.75rem;"><span>☝️</span><span style="color:var(--text-dim);"> Point = Select planet</span></div>
+        <div class="gesture-row" style="font-size:0.75rem;"><span>✊</span><span style="color:var(--text-dim);"> Fist = Pause</span></div>
+        <div style="color:var(--text-dim);font-size:0.72rem;margin-top:8px;">Click/tap planet to select</div>
+      </div>
+    </div>
+    <div class="glass planet-info-panel" id="planet-info-panel"></div>
+  </section>
+
+  <!-- PAGE 3: GAMES -->
+  <section id="page-games" class="page">
+    <div style="font-family:var(--font-display);font-size:0.65rem;letter-spacing:0.2em;color:var(--neon-cyan);margin-bottom:16px;max-width:1100px;margin-left:auto;margin-right:auto;">✦ GESTURE CATCH — Move your hand to control the paddle</div>
+    <div class="games-grid">
+      <div>
+        <div id="game-canvas-wrapper">
+          <canvas id="game-canvas"></canvas>
+          <div class="game-hud">
+            <div class="hud-score">⭐ 0</div>
+            <div class="hud-lives">❤️❤️❤️</div>
+            <div class="hud-timer">⏱ 60s</div>
+          </div>
+          <div id="game-over-screen" class="game-over-screen">
+            <div style="font-family:var(--font-display);font-size:1rem;letter-spacing:0.2em;color:var(--text-dim);">GAME OVER</div>
+            <div class="final-score">0</div>
+            <div class="game-over-msg" style="color:var(--neon-cyan);font-size:1.2rem;margin-bottom:24px;">⭐ GREAT JOB!</div>
+            <div style="display:flex;gap:12px;">
+              <button class="btn btn-primary" id="restart-game-btn">▶ Play Again</button>
+              <button class="btn btn-ghost" onclick="window.appRouter.navigate('home')">🏠 Home</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="game-sidebar">
+        <div class="glass game-card">
+          <div style="font-family:var(--font-display);font-size:0.75rem;color:var(--neon-cyan);margin-bottom:12px;">START GAME</div>
+          <button class="btn btn-primary" id="start-game-btn" style="width:100%;margin-bottom:8px;">▶ Start Game</button>
+          <p style="font-size:0.78rem;color:var(--text-dim);">Or show ✋ Open Palm gesture</p>
+        </div>
+        <div class="glass game-card">
+          <div style="font-family:var(--font-display);font-size:0.75rem;color:var(--neon-cyan);margin-bottom:8px;">DIFFICULTY</div>
+          <div class="diff-buttons">
+            <button class="diff-btn" data-diff="easy">😌 Easy — 90 sec, slow</button>
+            <button class="diff-btn active" data-diff="medium">😐 Medium — 60 sec</button>
+            <button class="diff-btn" data-diff="hard">🔥 Hard — 30 sec, fast</button>
+          </div>
+        </div>
+        <div class="glass game-card">
+          <div style="font-family:var(--font-display);font-size:0.75rem;color:var(--neon-cyan);margin-bottom:10px;">OBJECT GUIDE</div>
+          <div style="font-size:0.82rem;color:var(--text-dim);line-height:2.2;">⭐ Star = 1 pt<br>💎 Gem = 3 pts<br>🔥 Fire = 5 pts<br>🌟 Bonus = 10 pts<br>💣 Bomb = −2 pts ⚠️<br>❄️ Ice = Freeze enemies</div>
+        </div>
+        <div class="glass game-card">
+          <div style="font-family:var(--font-display);font-size:0.75rem;color:var(--neon-cyan);margin-bottom:8px;">GESTURE CONTROLS</div>
+          <div style="font-size:0.8rem;color:var(--text-dim);line-height:2.2;">↔️ Move hand = Paddle<br>✋ Open palm = Start<br>✊ Fist = Stop game</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- PAGE 4: MICRO WORLD -->
+  <section id="page-micro" class="page" style="position:relative;height:100vh;">
+    <canvas id="micro-canvas"></canvas>
+    <div class="micro-controls">
+      <div class="glass-card" style="padding:16px;min-width:180px;">
+        <div style="font-family:var(--font-display);font-size:0.65rem;letter-spacing:0.15em;color:var(--neon-green);margin-bottom:12px;">SIMULATION MODE</div>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          <button class="diff-btn micro-mode-btn active" data-mode="atoms">⚛️ Atoms</button>
+          <button class="diff-btn micro-mode-btn" data-mode="cells">🦠 Cells</button>
+          <button class="diff-btn micro-mode-btn" data-mode="particles">🔵 Charged Particles</button>
+        </div>
+      </div>
+      <div class="glass-card" style="padding:16px;min-width:180px;">
+        <div style="font-family:var(--font-display);font-size:0.65rem;letter-spacing:0.15em;color:var(--neon-green);margin-bottom:10px;">PHYSICS</div>
+        <button class="diff-btn" id="gravity-toggle" style="width:100%;text-align:center;margin-bottom:8px;">🌍 Toggle Gravity</button>
+        <div style="font-size:0.75rem;color:var(--text-dim);">Brownian motion always active</div>
+      </div>
+      <div class="glass-card" style="padding:12px 16px;">
+        <div style="font-family:var(--font-display);font-size:0.65rem;letter-spacing:0.15em;color:var(--neon-green);margin-bottom:8px;">GESTURES</div>
+        <div class="gesture-row" style="font-size:0.75rem;"><span>🤏</span><span style="color:var(--text-dim);"> Pinch = Grab</span></div>
+        <div class="gesture-row" style="font-size:0.75rem;"><span>✋</span><span style="color:var(--text-dim);"> Open = Explode</span></div>
+        <div class="gesture-row" style="font-size:0.75rem;"><span>🤏↕</span><span style="color:var(--text-dim);"> Pinch zoom = Scale</span></div>
+      </div>
+    </div>
+    <div class="scale-indicator" id="scale-display">SCALE: 1nm</div>
+  </section>
+
+</main>
+
+<!-- SCRIPTS -->
+<script src="js/tracking/engine.js"></script>
+<script src="js/pages/music.js"></script>
+<script src="js/pages/planets.js"></script>
+<script src="js/pages/game.js"></script>
+<script src="js/pages/micro.js"></script>
+<script src="js/utils/app.js"></script>
+
+</body>
+</html>
